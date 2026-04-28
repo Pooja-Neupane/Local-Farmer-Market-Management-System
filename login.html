@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Farmer Market - Login</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+  <script defer src="/public/main.js"></script>
+  <meta name="theme-color" content="#2e7d32"/>
+</head>
+<body>
+  <div class="header">
+    <div class="container split">
+      <div>
+        <h1>Local Farmer Market</h1>
+        <div>Eco-friendly, community-driven marketplace</div>
+      </div>
+      <div class="nav">
+        <a class="btn secondary" href="/home">Home</a>
+        <a class="btn" href="/register">Register</a>
+      </div>
+    </div>
+  </div>
+  <div class="container auth">
+    <div class="card">
+      <h2>Sign in</h2>
+      <form id="loginForm" role="form" aria-label="Login form">
+        <div>
+          <label>Email</label>
+          <input name="email" type="email" placeholder="you@farm.local" required autofocus />
+        </div>
+        <div>
+          <label>Password</label>
+          <input name="password" type="password" placeholder="••••••••" required />
+        </div>
+        <button class="btn" type="submit">Login</button>
+      </form>
+      <div class="stack">
+        <div class="tag">Admin: admin@market.local / admin123</div>
+        <div class="tag">Farmer: farmer@market.local / farmer123</div>
+        <div class="tag">Customer: customer@market.local / customer123</div>
+      </div>
+      <div class="muted-link">New here? <a href="/register">Create an account</a></div>
+      <div id="msg" class="tag" style="display:none"></div>
+    </div>
+  </div>
+  <div class="footer">Grow local. Buy fresh.</div>
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const existing = await FM.whoAmI();
+      if(existing){
+        if(existing.role === 'admin') location.href = '/admin';
+        if(existing.role === 'farmer') location.href = '/farmer';
+        if(existing.role === 'customer') location.href = '/customer';
+        return;
+      }
+      const form = document.getElementById('loginForm');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const fd = new FormData(form);
+          const payload = Object.fromEntries(fd);
+          const res = await FM.api('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) });
+          if(res.user.role === 'admin') location.href = '/admin';
+          if(res.user.role === 'farmer') location.href = '/farmer';
+          if(res.user.role === 'customer') location.href = '/customer';
+        } catch (err) {
+          const msg = document.getElementById('msg');
+          msg.textContent = err.message || 'Login failed';
+          msg.style.display = 'inline-block';
+        }
+      });
+    });
+  </script>

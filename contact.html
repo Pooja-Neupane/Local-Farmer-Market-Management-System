@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contact - Local Farmer Market</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+  <script defer src="/public/main.js"></script>
+  <meta name="theme-color" content="#2e7d32"/>
+</head>
+<body>
+  <div class="topbar">
+    <div class="container split">
+      <div class="brand">
+        <div class="brand-title">Local Farmer Market</div>
+        <div class="brand-sub">Contact</div>
+      </div>
+      <div class="nav">
+        <a class="btn secondary" href="/home">Home</a>
+        <a class="btn secondary" href="/about">About Us</a>
+        <a class="btn secondary" href="/services">Services</a>
+        <a class="btn" href="/login">Login</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="container contact-grid">
+    <div class="card">
+      <h2>Send a Message</h2>
+      <form id="contactForm">
+        <div>
+          <label>Name</label>
+          <input name="name" required />
+        </div>
+        <div>
+          <label>Email</label>
+          <input name="email" type="email" required />
+        </div>
+        <div>
+          <label>Message</label>
+          <textarea name="message" rows="5" required></textarea>
+        </div>
+        <button class="btn" type="submit">Submit</button>
+      </form>
+      <div id="contactMsg" class="tag" style="display:none"></div>
+    </div>
+    <div class="card">
+      <h2>Connect With Us</h2>
+      <div class="contact-info">
+        <div><strong>Email:</strong> hello@localfarmermarket.com</div>
+        <div><strong>WhatsApp:</strong> <a href="https://wa.me/9779812345678">+977 9812345678</a></div>
+        <div><strong>Facebook:</strong> <a href="https://facebook.com" target="_blank" rel="noreferrer">facebook.com/localfarmermarket</a></div>
+        <div><strong>Instagram:</strong> <a href="https://instagram.com" target="_blank" rel="noreferrer">@localfarmermarket</a></div>
+        <div><strong>Twitter:</strong> <a href="https://twitter.com" target="_blank" rel="noreferrer">@localfarmmarket</a></div>
+      </div>
+      <div class="map-card">
+        <div class="map-title">Location</div>
+        <div class="map-box">Jhapa, Nepal</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">We’re here to support local food systems.</div>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('contactForm');
+      const msg = document.getElementById('contactMsg');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const payload = Object.fromEntries(fd.entries());
+        msg.style.display = 'none';
+        try {
+          await FM.api('/api/public/contact', { method:'POST', body: JSON.stringify(payload) });
+          msg.textContent = 'Message sent successfully';
+          msg.style.display = 'inline-block';
+          form.reset();
+        } catch (err) {
+          msg.textContent = err.message || 'Failed to send';
+          msg.style.display = 'inline-block';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

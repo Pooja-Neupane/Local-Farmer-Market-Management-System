@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Customer Marketplace</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+  <script defer src="/public/main.js"></script>
+  <meta name="theme-color" content="#2e7d32"/>
+</head>
+<body class="compact-dashboard">
+  <div class="header">
+    <div class="container split">
+      <div>
+        <h1>Shop Local</h1>
+        <div class="muted">Seasonal harvests and trusted farmers</div>
+      </div>
+      <div class="nav">
+        <a class="btn secondary" href="/farmer">Farmer View</a>
+        <button class="btn" onclick="FM.logout()">Logout</button>
+      </div>
+    </div>
+  </div>
+  <div class="container">
+    <div class="card filter-bar">
+      <div class="row">
+        <div class="grow">
+          <label>Search</label>
+          <input id="searchInput" placeholder="Search products or farmers" />
+        </div>
+        <div class="grow">
+          <label>Category</label>
+          <select id="categorySelect"></select>
+        </div>
+        <div class="grow">
+          <label>Farmer</label>
+          <select id="farmerSelect"></select>
+        </div>
+        <div class="grow">
+          <label>Seasonal</label>
+          <select id="seasonalSelect">
+            <option value="">All</option>
+            <option value="1">Seasonal Only</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div>
+        <div class="card">
+          <h2>Seasonal Highlights</h2>
+          <div id="seasonalList" class="grid"></div>
+        </div>
+        <div class="card">
+          <h2>All Products</h2>
+          <div id="productList" class="grid"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card cart" id="cartCard">
+          <div class="cart-header">
+            <h3>Your Cart</h3>
+            <span class="tag">Live Total</span>
+          </div>
+          <div id="cartList" class="cart-list"></div>
+          <div class="bill">
+            <div class="bill-title">Receipt</div>
+            <div class="row" style="margin-bottom:12px;">
+              <div class="grow">
+                <label>Delivery Method</label>
+                <select id="deliveryMethod" style="margin-bottom:0;">
+                  <option value="0">Pickup (Free)</option>
+                  <option value="100">Standard Delivery (Rs 100)</option>
+                  <option value="200">Express Delivery (Rs 200)</option>
+                </select>
+              </div>
+            </div>
+            <div id="billItems" class="bill-items"></div>
+            <div class="bill-line"><span>Items</span><span id="billCount">0</span></div>
+            <div class="bill-line"><span>Subtotal</span><span id="billSubtotal">Rs 0.00</span></div>
+            <div class="bill-line" id="deliveryLine" style="display:none"><span>Delivery</span><span id="deliveryCharge">Rs 0.00</span></div>
+            <div class="bill-line total"><span>Total</span><span id="cartTotal">Rs 0.00</span></div>
+          </div>
+          <button id="checkoutBtn" class="btn" style="margin-top:12px" disabled>Place Order</button>
+          <div class="tag" id="cartMsg" style="display:none;margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Order History</h2>
+      <div id="orderHistory" class="list-grid"></div>
+    </div>
+
+    <div class="card">
+      <h2>Edit Profile</h2>
+      <form id="profileForm">
+        <div class="row">
+          <div class="grow">
+            <label>Name</label>
+            <input id="profileName" required />
+          </div>
+          <div class="grow">
+            <label>Email</label>
+            <input id="profileEmail" type="email" required />
+          </div>
+        </div>
+        <button class="btn secondary" type="submit">Save Profile</button>
+      </form>
+      <div id="profileMsg" class="tag" style="display:none"></div>
+    </div>
+
+    <div class="card">
+      <h2>Rate a Farmer</h2>
+      <form id="reviewForm">
+        <div class="row">
+          <div class="grow">
+            <label>Farmer</label>
+            <select id="reviewFarmer"></select>
+          </div>
+          <div class="grow">
+            <label>Rating</label>
+            <select id="reviewRating">
+              <option value="5">5 - Excellent</option>
+              <option value="4">4 - Great</option>
+              <option value="3">3 - Good</option>
+              <option value="2">2 - Fair</option>
+              <option value="1">1 - Poor</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label>Comment</label>
+          <input id="reviewComment" placeholder="Share your experience" />
+        </div>
+        <button class="btn secondary" type="submit">Submit Review</button>
+      </form>
+      <div id="reviewMsg" class="tag" style="display:none"></div>
+    </div>
+
+    <div class="card">
+      <h2>Product Requests</h2>
+      <div id="requestHistory" class="list-grid"></div>
+    </div>
+
+    <div class="card">
+      <h2>Notifications</h2>
+      <div id="customerNotifications" class="list-grid"></div>
+    </div>
+  </div>
+  <div class="footer">Support farmers, savor freshness</div>
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const user = await FM.whoAmI();
+      if(!user){ location.href='/login'; return; }
+      if(user.role !== 'customer'){ location.href='/dashboard'; return; }
+
+      const cart = new Map();
+      const inventory = new Map();
+      const searchInput = document.getElementById('searchInput');
+      const categorySelect = document.getElementById('categorySelect');
+      const farmerSelect = document.getElementById('farmerSelect');
+      const seasonalSelect = document.getElementById('seasonalSelect');
+
+      function format(n){return 'Rs '+(Number(n).toFixed(2))}
+      function clampQty(id, desired){
+        const item = cart.get(id);
+        if(!item) return;
+        const available = inventory.get(id)?.quantity ?? item.available ?? 0;
+        if(available <= 0){ cart.delete(id); return; }
+        item.available = available;
+        item.quantity = Math.min(Math.max(1, desired), available);
+      }
+      function renderCart(){
+        const list = document.getElementById('cartList');
+        const items = Array.from(cart.values());
+        const billItems = document.getElementById('billItems');
+        if(items.length===0){
+          list.innerHTML = '<div class="tag">Your cart is empty</div>';
+          billItems.innerHTML = '<div class="bill-empty">Add items to see your bill</div>';
+          document.getElementById('checkoutBtn').disabled = true;
+          document.getElementById('cartTotal').textContent = 'Rs 0.00';
+          document.getElementById('billSubtotal').textContent = 'Rs 0.00';
+          document.getElementById('billCount').textContent = '0';
+          return;
+        }
+        list.innerHTML = items.map(it => `
+          <div class="cart-item" data-id="${it.id}">
+            <div class="cart-info">
+              <div class="cart-name">${it.name}${it.option ? ` - ${it.option}` : ''}</div>
+              <div class="muted-text">Unit ${format(it.price)}</div>
+              <div class="muted-text">In stock ${it.available ?? '-'}</div>
+            </div>
+            <div class="qty-controls">
+              <button class="icon-btn" data-action="dec">-</button>
+              <input class="qty-input" type="number" min="1" max="${it.available ?? 1}" value="${it.quantity}" />
+              <button class="icon-btn" data-action="inc">+</button>
+            </div>
+            <div class="cart-line">
+              <div class="price">${format(it.price * it.quantity)}</div>
+              <button class="btn secondary small" data-action="remove">Remove</button>
+            </div>
+          </div>
+        `).join('');
+        list.querySelectorAll('.cart-item').forEach(row => {
+          const id = Number(row.getAttribute('data-id'));
+          const qtyInput = row.querySelector('.qty-input');
+          const decBtn = row.querySelector('[data-action="dec"]');
+          const incBtn = row.querySelector('[data-action="inc"]');
+          const removeBtn = row.querySelector('[data-action="remove"]');
+          qtyInput.addEventListener('change', () => {
+            clampQty(id, Number(qtyInput.value||1));
+            renderCart();
+          });
+          decBtn.addEventListener('click', () => {
+            const item = cart.get(id);
+            if(!item) return;
+            clampQty(id, item.quantity - 1);
+            renderCart();
+          });
+          incBtn.addEventListener('click', () => {
+            const item = cart.get(id);
+            if(!item) return;
+            clampQty(id, item.quantity + 1);
+            renderCart();
+          });
+          removeBtn.addEventListener('click', () => {
+            cart.delete(id);
+            renderCart();
+          });
+        });
+        const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
+        const delivery = Number(document.getElementById('deliveryMethod').value);
+        const count = items.reduce((s, it) => s + it.quantity, 0);
+        const grandTotal = total + delivery;
+        document.getElementById('cartTotal').textContent = format(grandTotal);
+        document.getElementById('billSubtotal').textContent = format(total);
+        if(delivery > 0){
+          document.getElementById('deliveryLine').style.display = 'flex';
+          document.getElementById('deliveryCharge').textContent = format(delivery);
+        } else {
+          document.getElementById('deliveryLine').style.display = 'none';
+        }
+        document.getElementById('billCount').textContent = String(count);
+        billItems.innerHTML = items.map(it => `
+          <div class="bill-item">
+            <span>${it.name}${it.option ? ` (${it.option})` : ''} × ${it.quantity}</span>
+            <span>${format(it.price * it.quantity)}</span>
+          </div>
+        `).join('');
+        document.getElementById('checkoutBtn').disabled = false;
+      }
+
+      function getFilters(){
+        return {
+          category: categorySelect.value || '',
+          farmer: farmerSelect.value || '',
+          seasonal: seasonalSelect.value || '',
+          search: searchInput.value || ''
+        };
+      }
+
+      async function loadFilters(){
+        const [categories, farmers] = await Promise.all([
+          FM.api('/api/customer/categories'),
+          FM.api('/api/customer/farmers')
+        ]);
+        categorySelect.innerHTML = '<option value="">All</option>' + categories.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+        farmerSelect.innerHTML = '<option value="">All</option>' + farmers.farmers.map(f => `<option value="${f.farmer_id}">${f.farm_name}</option>`).join('');
+        const reviewSelect = document.getElementById('reviewFarmer');
+        reviewSelect.innerHTML = farmers.farmers.map(f => `<option value="${f.farmer_id}">${f.farm_name}</option>`).join('');
+      }
+
+      function renderProducts(target, products){
+        if(!products.length){
+          target.innerHTML = '<div class="card">No products found.</div>';
+          return;
+        }
+        target.innerHTML = products.map(p => {
+          const options = p.options ? p.options.split(',').filter(o => o.trim()) : [];
+          const isAvailable = p.quantity > 0;
+          return `
+          <div class="card product">
+            <img src="${p.image || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22140%22><rect width=%22300%22 height=%22140%22 fill=%22%23b7e4c7%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%231b5e20%22 font-size=%2216%22>Fresh Produce</text></svg>'}" alt="">
+            <div><strong>${p.name}</strong></div>
+            <div class="muted-text">${p.farm_name} · ${p.location}</div>
+            <div>Category: ${p.category}</div>
+            <div>Price: Rs ${Number(p.price).toFixed(2)}</div>
+            <div class="muted-text">Rating: ${p.rating_avg || 'New'}</div>
+            ${isAvailable ? `
+              <div>Available: ${p.quantity}</div>
+              ${options.length > 0 ? `
+              <div style="margin-bottom:8px;">
+                <label style="display:block; margin-bottom:6px;">Select Option:</label>
+                <select id="opt-${p.product_id}" class="product-option" style="width:100%;">
+                  <option value="">-- Choose option --</option>
+                  ${options.map(opt => `<option value="${opt.trim()}">${opt.trim()}</option>`).join('')}
+                </select>
+              </div>
+              ` : ''}
+              <div class="row">
+                <input class="grow" type="number" min="1" max="${p.quantity}" placeholder="Quantity" id="qty-${p.product_id}">
+                <button class="btn add-btn" data-id="${p.product_id}" data-name="${p.name.replace(/\"/g,'&quot;')}" data-price="${p.price}" data-image="${p.image||''}">Add to Cart</button>
+              </div>
+            ` : `
+              <div class="muted-text">Out of Stock</div>
+              <div class="row">
+                <textarea id="req-msg-${p.product_id}" class="grow" placeholder="Request message..." style="height:60px;margin:0;"></textarea>
+                <button class="btn secondary" data-action="request" data-id="${p.product_id}" data-name="${p.name}" data-farmer="${p.farmer_id}">Request</button>
+              </div>
+            `}
+            <div class="tag" id="msg-${p.product_id}" style="display:none"></div>
+          </div>
+        `;
+        }).join('');
+        target.querySelectorAll('.add-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = Number(btn.getAttribute('data-id'));
+            const name = btn.getAttribute('data-name');
+            const price = Number(btn.getAttribute('data-price'));
+            const image = btn.getAttribute('data-image') || null;
+            const optSelect = document.getElementById('opt-' + id);
+            const option = optSelect ? optSelect.value : '';
+            const qtyInput = document.getElementById('qty-'+id);
+            const qty = Math.max(1, Number(qtyInput.value || 1));
+            const available = inventory.get(id)?.quantity ?? 0;
+            const msg = document.getElementById('msg-'+id);
+            if(available <= 0){
+              msg.textContent = 'Out of stock';
+              msg.style.display='inline-block';
+              return;
+            }
+            const cartKey = option ? `${id}-${option}` : id;
+            const existing = cart.get(cartKey);
+            const baseQty = existing ? existing.quantity : 0;
+            const nextQty = Math.min(baseQty + qty, available);
+            if(existing){
+              existing.quantity = nextQty;
+              existing.available = available;
+            } else {
+              cart.set(cartKey, { id, name, price, option, quantity: nextQty, image, available });
+            }
+            msg.textContent = nextQty < baseQty + qty ? `Only ${available} available` : 'Added to cart';
+            msg.style.display='inline-block';
+            renderCart();
+          });
+        });
+        target.querySelectorAll('[data-action="request"]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const productId = btn.getAttribute('data-id');
+            const productName = btn.getAttribute('data-name');
+            const farmerId = btn.getAttribute('data-farmer');
+            const msgArea = document.getElementById('req-msg-' + productId);
+            const msg = document.getElementById('msg-' + productId);
+            const message = msgArea.value.trim() || `Interested in ${productName}`;
+            msg.style.display='none';
+            try {
+              await FM.api('/api/customer/product-request', { method:'POST', body: JSON.stringify({ productId, farmerId, message }) });
+              msg.textContent = 'Request sent to farmer';
+              msg.style.display='inline-block';
+              msgArea.value = '';
+              setTimeout(() => { msg.style.display='none'; }, 3000);
+            } catch (e) {
+              msg.textContent = e.message || 'Request failed';
+              msg.style.display='inline-block';
+            }
+          });
+        });
+      }
+
+      async function loadProducts(){
+        const filters = getFilters();
+        const query = new URLSearchParams(filters).toString();
+        const data = await FM.api(`/api/customer/products?${query}`);
+        inventory.clear();
+        data.products.forEach(p => inventory.set(p.product_id, { quantity: p.quantity, price: p.price }));
+        renderProducts(document.getElementById('productList'), data.products);
+        const seasonal = data.products.filter(p => p.seasonal === 1);
+        renderProducts(document.getElementById('seasonalList'), seasonal);
+        Array.from(cart.values()).forEach(item => clampQty(item.id, item.quantity));
+        renderCart();
+      }
+
+      async function loadOrders(){
+        const data = await FM.api('/api/customer/orders');
+        const wrap = document.getElementById('orderHistory');
+        if(!data.orders.length){
+          wrap.innerHTML = '<div class="tag">No orders yet</div>';
+          return;
+        }
+        wrap.innerHTML = data.orders.map(o => `
+          <div class="card compact">
+            <div><strong>Order #${o.order_id}</strong> · ${new Date(o.date).toLocaleString()}</div>
+            <div class="muted-text">Total: Rs ${Number(o.total_amount).toFixed(2)}</div>
+            <div class="list">
+              ${o.items.map(i => `<div>${i.name} × ${i.quantity} · Rs ${Number(i.price).toFixed(2)}</div>`).join('')}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      async function loadNotifications(){
+        const data = await FM.api('/api/customer/notifications');
+        const wrap = document.getElementById('customerNotifications');
+        if(!data.notifications.length){
+          wrap.innerHTML = '<div class="tag">No notifications yet</div>';
+          return;
+        }
+        wrap.innerHTML = data.notifications.map(n => `
+          <div class="card compact ${n.is_read ? 'faded' : ''}">
+            <div>${n.message}</div>
+            <div class="muted-text">${new Date(n.created_at).toLocaleString()}</div>
+            ${n.is_read ? '' : `<button class="btn secondary small" data-id="${n.id}">Mark read</button>`}
+          </div>
+        `).join('');
+        wrap.querySelectorAll('button').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await FM.api('/api/customer/notifications/read', { method:'POST', body: JSON.stringify({ id: btn.getAttribute('data-id') }) });
+            loadNotifications();
+          });
+        });
+      }
+
+      async function loadProductRequests(){
+        const data = await FM.api('/api/customer/my-requests');
+        const wrap = document.getElementById('requestHistory');
+        if(!data.requests || data.requests.length === 0){
+          wrap.innerHTML = '<div class="tag">No product requests yet</div>';
+          return;
+        }
+        wrap.innerHTML = data.requests.map(r => `
+          <div class="card compact">
+            <div><strong>${r.product_name}</strong> - ${r.farm_name}</div>
+            <div class="muted-text">Your Message: ${r.message}</div>
+            ${r.response ? `<div style="background:#e8f5e9; padding:8px; border-radius:6px; margin-top:8px;"><strong>Farmer Response:</strong><br>${r.response}</div>` : '<div class="muted-text">Waiting for farmer response...</div>'}
+            <div class="muted-text" style="margin-top:8px;">${new Date(r.created_at).toLocaleString()}</div>
+          </div>
+        `).join('');
+      }
+
+      document.getElementById('checkoutBtn').addEventListener('click', async () => {
+        const items = Array.from(cart.values()).map(it => ({ productId: it.id, quantity: it.quantity }));
+        const delivery = Number(document.getElementById('deliveryMethod').value);
+        const cartMsg = document.getElementById('cartMsg');
+        cartMsg.style.display='none';
+        try {
+          const res = await FM.api('/api/customer/checkout', { method:'POST', body: JSON.stringify({ items, delivery }) });
+          const total = Number(res.total) + delivery;
+          cartMsg.textContent = `Order placed. Total: Rs ${total.toFixed(2)}`;
+          cartMsg.style.display='inline-block';
+          cart.clear();
+          renderCart();
+          loadProducts();
+          loadOrders();
+          loadNotifications();
+        } catch (e) {
+          cartMsg.textContent = e.message || 'Checkout failed';
+          cartMsg.style.display='inline-block';
+        }
+      });
+
+      document.getElementById('reviewForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const farmerId = document.getElementById('reviewFarmer').value;
+        const rating = document.getElementById('reviewRating').value;
+        const comment = document.getElementById('reviewComment').value;
+        const msg = document.getElementById('reviewMsg');
+        msg.style.display = 'none';
+        try {
+          await FM.api('/api/customer/reviews', { method:'POST', body: JSON.stringify({ farmerId, rating, comment }) });
+          msg.textContent = 'Review submitted';
+          msg.style.display = 'inline-block';
+          document.getElementById('reviewComment').value = '';
+          loadProducts();
+        } catch (err) {
+          msg.textContent = err.message || 'Review failed';
+          msg.style.display = 'inline-block';
+        }
+      });
+
+      document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('profileName').value;
+        const email = document.getElementById('profileEmail').value;
+        const msg = document.getElementById('profileMsg');
+        msg.style.display = 'none';
+        try {
+          await FM.api('/api/customer/profile', { method:'POST', body: JSON.stringify({ name, email }) });
+          msg.textContent = 'Profile updated';
+          msg.style.display = 'inline-block';
+        } catch (err) {
+          msg.textContent = err.message || 'Update failed';
+          msg.style.display = 'inline-block';
+        }
+      });
+
+      async function loadProfile(){
+        const data = await FM.api('/api/customer/profile');
+        document.getElementById('profileName').value = data.profile.name;
+        document.getElementById('profileEmail').value = data.profile.email;
+      }
+
+      [searchInput, categorySelect, farmerSelect, seasonalSelect].forEach(el => {
+        el.addEventListener('change', () => loadProducts());
+        el.addEventListener('keyup', () => loadProducts());
+      });
+
+      document.getElementById('deliveryMethod').addEventListener('change', () => renderCart());
+
+      await loadFilters();
+      await loadProducts();
+      await loadOrders();
+      await loadProductRequests();
+      await loadNotifications();
+      await loadProfile();
+      setInterval(loadProducts, 10000);
+    });
+  </script>
+</body>
+</html>

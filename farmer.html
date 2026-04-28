@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Farmer Portal</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+  <script defer src="/public/main.js"></script>
+  <meta name="theme-color" content="#2e7d32"/>
+</head>
+<body class="compact-dashboard">
+  <div class="header">
+    <div class="container split">
+      <div>
+        <h1>Farmer Portal</h1>
+        <div class="muted">Manage products, orders, and sales</div>
+      </div>
+      <div class="nav">
+        <a class="btn secondary" href="/customer">Customer View</a>
+        <button class="btn" onclick="FM.logout()">Logout</button>
+      </div>
+    </div>
+  </div>
+  <div class="container">
+    <div class="card">
+      <h2>Add New Product</h2>
+      <form id="productForm" enctype="multipart/form-data">
+        <div class="row">
+          <div class="grow">
+            <label>Name</label>
+            <input name="name" required />
+          </div>
+          <div class="grow">
+            <label>Category</label>
+            <input name="category" required />
+          </div>
+        </div>
+        <div class="row">
+          <div class="grow">
+            <label>Price (RS)</label>
+            <input name="price" type="number" step="0.01" min="0.01" required />
+          </div>
+          <div class="grow">
+            <label>Quantity</label>
+            <input name="quantity" type="number" min="1" required />
+          </div>
+          <div class="grow">
+            <label>Seasonal</label>
+            <select name="seasonal">
+              <option value="0">No</option>
+              <option value="1">Yes</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label>Image</label>
+          <input name="image" type="file" accept="image/*" />
+        </div>
+        <div>
+          <label>Product Options (comma-separated, e.g: Small,Medium,Large)</label>
+          <input name="options" placeholder="Leave empty if no options" />
+        </div>
+        <button class="btn" type="submit">Add Product</button>
+      </form>
+      <div id="productMsg" class="tag" style="display:none"></div>
+    </div>
+
+    <div class="card">
+      <h2>Your Products</h2>
+      <div id="productTable" class="table"></div>
+    </div>
+
+    <div class="card">
+      <h2>Customer Orders</h2>
+      <div id="orderTable" class="table"></div>
+    </div>
+
+    <div class="card">
+      <h2>Sales Summary</h2>
+      <div id="salesTable" class="table"></div>
+    </div>
+
+    <div class="card">
+      <h2>Product Requests</h2>
+      <div id="requestTable" class="table"></div>
+    </div>
+
+    <div class="card">
+      <h2>Notifications</h2>
+      <div id="farmerNotifications" class="list-grid"></div>
+    </div>
+  </div>
+  <div class="footer">Thank you for growing locally</div>
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const user = await FM.whoAmI();
+      if(!user){ location.href='/login'; return; }
+      if(user.role !== 'farmer'){ location.href='/dashboard'; return; }
+
+      const form = document.getElementById('productForm');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const msg = document.getElementById('productMsg');
+        msg.style.display = 'none';
+        try {
+          const res = await fetch('/api/farmer/products', { method:'POST', body: fd, credentials:'same-origin' });
+          if(!res.ok){ throw new Error((await res.json()).error || 'Failed'); }
+          msg.textContent = 'Product added';
+          msg.style.display = 'inline-block';
+          form.reset();
+          loadAll();
+        } catch (err) {
+          msg.textContent = err.message || 'Failed';
+          msg.style.display = 'inline-block';
+        }
+      });
+
+      function renderTable(headers, rows){
+        return `
+          <div class="table-grid" style="--cols:${headers.length}">
+            ${headers.map(h => `<div class="table-head">${h}</div>`).join('')}
+            ${rows.map(r => r.map(c => `<div class="table-cell">${c}</div>`).join('')).join('')}
+          </div>
+        `;
+      }
+
+      async function loadProducts(){
+        const data = await FM.api('/api/farmer/products');
+        const table = document.getElementById('productTable');
+        if(!data.products.length){
+          table.innerHTML = '<div class="tag">No products yet</div>';
+          return;
+        }
+        table.innerHTML = renderTable(['Name','Category','Price','Qty','Seasonal','Actions'], data.products.map(p => [
+          `<input value="${p.name}" data-field="name" data-id="${p.product_id}" />`,
+          `<input value="${p.category}" data-field="category" data-id="${p.product_id}" />`,
+          `<input type="number" step="0.01" value="${p.price}" data-field="price" data-id="${p.product_id}" />`,
+          `<input type="number" value="${p.quantity}" data-field="quantity" data-id="${p.product_id}" />`,
+          `<select data-field="seasonal" data-id="${p.product_id}">
+             <option value="0" ${p.seasonal ? '' : 'selected'}>No</option>
+             <option value="1" ${p.seasonal ? 'selected' : ''}>Yes</option>
+           </select>`,
+          `<div class="row">
+             <button class="btn small" data-action="save" data-id="${p.product_id}">Save</button>
+             <button class="btn secondary small" data-action="delete" data-id="${p.product_id}">Delete</button>
+           </div>`
+        ]));
+        table.querySelectorAll('button').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            const action = btn.getAttribute('data-action');
+            if(action === 'delete'){
+              await FM.api('/api/farmer/products', { method:'DELETE', body: JSON.stringify({ productId: id }) });
+              loadAll();
+              return;
+            }
+            const inputs = Array.from(table.querySelectorAll(`[data-id="${id}"]`));
+            const payload = { productId: id };
+            inputs.forEach(el => payload[el.getAttribute('data-field')] = el.value);
+            await FM.api('/api/farmer/products', { method:'PUT', body: JSON.stringify(payload) });
+            loadAll();
+          });
+        });
+      }
+
+      async function loadOrders(){
+        const data = await FM.api('/api/farmer/orders');
+        const table = document.getElementById('orderTable');
+        if(!data.orders.length){
+          table.innerHTML = '<div class="tag">No orders yet</div>';
+          return;
+        }
+        table.innerHTML = renderTable(['Order','Customer','Product','Qty','Price','Date'], data.orders.map(o => [
+          `#${o.order_id}`, o.customer_name, o.product_name, o.quantity, `Rs ${Number(o.price).toFixed(2)}`, new Date(o.date).toLocaleString()
+        ]));
+      }
+
+      async function loadSales(){
+        const data = await FM.api('/api/farmer/sales');
+        const table = document.getElementById('salesTable');
+        if(!data.sales.length){
+          table.innerHTML = '<div class="tag">No sales data</div>';
+          return;
+        }
+        table.innerHTML = renderTable(['Product','Units Sold','Revenue'], data.sales.map(s => [
+          s.name, s.units_sold, `Rs ${Number(s.revenue).toFixed(2)}`
+        ]));
+      }
+
+      async function loadNotifications(){
+        const data = await FM.api('/api/farmer/notifications');
+        const wrap = document.getElementById('farmerNotifications');
+        if(!data.notifications.length){
+          wrap.innerHTML = '<div class="tag">No notifications yet</div>';
+          return;
+        }
+        wrap.innerHTML = data.notifications.map(n => `
+          <div class="card compact ${n.is_read ? 'faded' : ''}">
+            <div>${n.message}</div>
+            <div class="muted-text">${new Date(n.created_at).toLocaleString()}</div>
+            ${n.is_read ? '' : `<button class="btn secondary small" data-id="${n.id}">Mark read</button>`}
+          </div>
+        `).join('');
+        wrap.querySelectorAll('button').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await FM.api('/api/farmer/notifications/read', { method:'POST', body: JSON.stringify({ id: btn.getAttribute('data-id') }) });
+            loadNotifications();
+          });
+        });
+      }
+
+      async function loadRequests(){
+        const data = await FM.api('/api/farmer/requests');
+        const table = document.getElementById('requestTable');
+        if(!data.requests || data.requests.length === 0){
+          table.innerHTML = '<div class=\"tag\">No product requests yet</div>';
+          return;
+        }
+        table.innerHTML = renderTable(['Product','Customer','Message','Date','Action'], data.requests.map(r => [
+          r.product_name, r.customer_name, r.message.substring(0, 30) + (r.message.length > 30 ? '...' : ''), new Date(r.created_at).toLocaleDateString(),
+          `<button class=\"btn small\" data-action=\"respond\" data-id=\"${r.request_id}\" data-customer=\"${r.customer_email}\">Respond</button>`
+        ]));
+        table.querySelectorAll('button[data-action="respond"]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const requestId = btn.getAttribute('data-id');
+            const customerEmail = btn.getAttribute('data-customer');
+            const response = prompt('Send response to ' + customerEmail + ':');
+            if(response){
+              try {
+                await FM.api('/api/farmer/respond-request', { method:'POST', body: JSON.stringify({ requestId, response }) });
+                alert('Response sent!');
+                loadRequests();
+              } catch (e) {
+                alert(e.message || 'Failed to send response');
+              }
+            }
+          });
+        });
+      }
+
+      async function loadAll(){
+        await Promise.all([loadProducts(), loadOrders(), loadSales(), loadNotifications(), loadRequests()]);
+      }
+
+      loadAll();
+    });
+  </script>
+</body>
+</html>

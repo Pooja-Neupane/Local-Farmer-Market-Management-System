@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Farmer Market - Register</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+  <script defer src="/public/main.js"></script>
+  <meta name="theme-color" content="#2e7d32"/>
+</head>
+<body>
+  <div class="header">
+    <div class="container">
+      <h1>Create Account</h1>
+      <div>Join the local food ecosystem</div>
+    </div>
+  </div>
+  <div class="container auth">
+    <div class="card">
+      <h2>Register</h2>
+      <form id="registerForm">
+        <div>
+          <label>Full Name</label>
+          <input name="name" required />
+        </div>
+        <div>
+          <label>Email</label>
+          <input name="email" type="email" required />
+        </div>
+        <div>
+          <label>Password</label>
+          <input name="password" type="password" required />
+        </div>
+        <div>
+          <label>Role</label>
+          <select name="role" id="roleSelect">
+            <option value="customer">Customer</option>
+            <option value="farmer">Farmer</option>
+          </select>
+        </div>
+        <div id="farmFields" class="stack" style="display:none">
+          <div>
+            <label>Farm Name</label>
+            <input name="farm_name" />
+          </div>
+          <div>
+            <label>Location</label>
+            <input name="location" />
+          </div>
+        </div>
+        <button class="btn" type="submit">Create Account</button>
+      </form>
+      <div class="muted-link">Already have an account? <a href="/login">Login</a></div>
+      <div id="msg" class="tag" style="display:none"></div>
+    </div>
+  </div>
+  <div class="footer">Fresh food, fair trade</div>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const roleSelect = document.getElementById('roleSelect');
+      const farmFields = document.getElementById('farmFields');
+      const form = document.getElementById('registerForm');
+      roleSelect.addEventListener('change', () => {
+        farmFields.style.display = roleSelect.value === 'farmer' ? 'grid' : 'none';
+      });
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const payload = Object.fromEntries(fd.entries());
+        const msg = document.getElementById('msg');
+        msg.style.display = 'none';
+        try {
+          const res = await FM.api('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+          if(res.status === 'pending'){
+            msg.textContent = 'Registration submitted. Await admin approval.';
+            msg.style.display = 'inline-block';
+          } else {
+            location.href = '/login';
+          }
+        } catch (err) {
+          msg.textContent = err.message || 'Registration failed';
+          msg.style.display = 'inline-block';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

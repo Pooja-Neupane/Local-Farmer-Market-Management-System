@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Farmer Market - Dashboard</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+  <script defer src="/public/main.js"></script>
+  <meta name="theme-color" content="#2e7d32"/>
+</head>
+<body>
+  <div class="container">
+    <div class="card center-card">
+      <h2>Loading your dashboard...</h2>
+      <div class="tag">Preparing your workspace</div>
+    </div>
+  </div>
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const user = await FM.whoAmI();
+      if(!user){ location.href = '/login'; return; }
+      if(user.role === 'admin') location.href = '/admin';
+      if(user.role === 'farmer') location.href = '/farmer';
+      if(user.role === 'customer') location.href = '/customer';
+    });
+  </script>
+</body>
+</html>

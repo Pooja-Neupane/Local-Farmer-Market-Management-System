@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+  <script defer src="/public/main.js"></script>
+  <meta name="theme-color" content="#2e7d32"/>
+</head>
+<body class="compact-dashboard">
+  <div class="header">
+    <div class="container split">
+      <div>
+        <h1>Admin Dashboard</h1>
+        <div class="muted">Manage farmers, customers, products, and reports</div>
+      </div>
+      <div class="nav">
+        <button class="btn" onclick="FM.logout()">Logout</button>
+      </div>
+    </div>
+  </div>
+  <div class="container">
+    <div class="card">
+      <h2>Pending Farmer Approvals</h2>
+      <div id="pendingFarmers" class="list-grid"></div>
+    </div>
+    <div class="card">
+      <h2>Users</h2>
+      <div id="usersTable" class="table"></div>
+    </div>
+    <div class="card">
+      <h2>Products</h2>
+      <div id="productsTable" class="table"></div>
+    </div>
+    <div class="card">
+      <h2>Orders</h2>
+      <div id="ordersTable" class="table"></div>
+    </div>
+    <div class="card">
+      <h2>Reports</h2>
+      <div id="reportsPanel" class="report-grid"></div>
+    </div>
+  </div>
+  <div class="footer">Admin control center</div>
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const user = await FM.whoAmI();
+      if(!user){ location.href='/login'; return; }
+      if(user.role !== 'admin'){ location.href='/dashboard'; return; }
+
+      async function loadPending(){
+        const data = await FM.api('/api/admin/pending-farmers');
+        const container = document.getElementById('pendingFarmers');
+        if(!data.farmers.length){
+          container.innerHTML = '<div class="tag">No pending requests</div>';
+          return;
+        }
+        container.innerHTML = data.farmers.map(f => `
+          <div class="card compact">
+            <div><strong>${f.farm_name}</strong></div>
+            <div class="muted-text">${f.name} · ${f.email}</div>
+            <div class="muted-text">${f.location}</div>
+            <div class="row">
+              <button class="btn small" data-action="approve" data-id="${f.id}">Approve</button>
+              <button class="btn secondary small" data-action="reject" data-id="${f.id}">Reject</button>
+            </div>
+          </div>
+        `).join('');
+        container.querySelectorAll('button').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const userId = btn.getAttribute('data-id');
+            const action = btn.getAttribute('data-action');
+            await FM.api(`/api/admin/${action}-farmer`, { method:'POST', body: JSON.stringify({ userId }) });
+            loadAll();
+          });
+        });
+      }
+
+      async function loadUsers(){
+        const data = await FM.api('/api/admin/users');
+        const table = document.getElementById('usersTable');
+        table.innerHTML = renderTable(['Name','Email','Role','Status','Created','Actions'], data.users.map(u => [
+          u.name,
+          u.email,
+          u.role,
+          `<select data-user="${u.id}">
+            <option value="active" ${u.status === 'active' ? 'selected' : ''}>active</option>
+            <option value="pending" ${u.status === 'pending' ? 'selected' : ''}>pending</option>
+            <option value="rejected" ${u.status === 'rejected' ? 'selected' : ''}>rejected</option>
+           </select>`,
+          new Date(u.created_at).toLocaleDateString(),
+          `<button class="btn small" data-action="status" data-id="${u.id}">Save</button>`
+        ]));
+        table.querySelectorAll('button[data-action="status"]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const userId = btn.getAttribute('data-id');
+            const select = table.querySelector(`select[data-user="${userId}"]`);
+            await FM.api('/api/admin/users/status', { method:'POST', body: JSON.stringify({ userId, status: select.value }) });
+            loadUsers();
+          });
+        });
+      }
+
+      async function loadProducts(){
+        const data = await FM.api('/api/admin/products');
+        const table = document.getElementById('productsTable');
+        table.innerHTML = renderTable(['Product','Category','Price','Qty','Farmer','Actions'], data.products.map(p => [
+          p.name, p.category, `Rs ${Number(p.price).toFixed(2)}`, p.quantity, p.farm_name,
+          `<button class="btn secondary small" data-action="delete" data-id="${p.product_id}">Delete</button>`
+        ]));
+        table.querySelectorAll('button[data-action="delete"]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await FM.api('/api/admin/products/delete', { method:'POST', body: JSON.stringify({ productId: btn.getAttribute('data-id') }) });
+            loadProducts();
+          });
+        });
+      }
+
+      async function loadOrders(){
+        const data = await FM.api('/api/admin/orders');
+        const table = document.getElementById('ordersTable');
+        table.innerHTML = renderTable(['Order','Customer','Total','Date'], data.orders.map(o => [
+          `#${o.order_id}`, o.customer_name, `Rs ${Number(o.total_amount).toFixed(2)}`, new Date(o.date).toLocaleString()
+        ]));
+      }
+
+      async function loadReports(){
+        const data = await FM.api('/api/admin/reports');
+        const panel = document.getElementById('reportsPanel');
+        const users = data.users.reduce((acc, u) => ({ ...acc, [u.role]: u.count }), {});
+        panel.innerHTML = `
+          <div class="report-card">
+            <div class="muted-text">Total Sales</div>
+            <div class="report-value">Rs ${Number(data.sales.total_sales).toFixed(2)}</div>
+          </div>
+          <div class="report-card">
+            <div class="muted-text">Orders</div>
+            <div class="report-value">${data.sales.total_orders}</div>
+          </div>
+          <div class="report-card">
+            <div class="muted-text">Products</div>
+            <div class="report-value">${data.products.total_products}</div>
+          </div>
+          <div class="report-card">
+            <div class="muted-text">Users</div>
+            <div class="report-value">${(users.admin||0)+(users.farmer||0)+(users.customer||0)}</div>
+          </div>
+        `;
+      }
+
+      function renderTable(headers, rows){
+        return `
+          <div class="table-grid" style="--cols:${headers.length}">
+            ${headers.map(h => `<div class="table-head">${h}</div>`).join('')}
+            ${rows.map(r => r.map(c => `<div class="table-cell">${c}</div>`).join('')).join('')}
+          </div>
+        `;
+      }
+
+      async function loadAll(){
+        await Promise.all([loadPending(), loadUsers(), loadProducts(), loadOrders(), loadReports()]);
+      }
+
+      loadAll();
+    });
+  </script>
+</body>
+</html>
